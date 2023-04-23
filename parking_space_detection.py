@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import json
 import sys
+import torch
 
 plt.rcParams["figure.figsize"] = [13.91, 9.51]
 plt.rcParams["figure.autolayout"] = True
@@ -47,7 +48,7 @@ def getAverageColorOfParkingSpaces(parking_spaces, image):
         
     return average_colors
     
-def detectObjectsInImage(parking_spaces, image):
+def mobileNetSSDObjectDetection(parking_spaces, image):
     j = 1
     for parking_space in parking_spaces:
         mask = np.zeros(image.shape[:2], np.uint8)
@@ -63,10 +64,6 @@ def detectObjectsInImage(parking_spaces, image):
         y2 = parking_space[2][1]
         
         cropped_image = masked_img[y1:y2, x1:x2]
-        
-        plt.imshow(cropped_image)
-        plt.xticks([]), plt.yticks([])  # to hide tick values on X and Y axis
-        plt.show()
                 
         blob = cv2.dnn.blobFromImage(cropped_image, scalefactor=1.0, size=(300, 300), mean=(127.5, 127.5, 127.5))
         model.setInput(blob)
@@ -83,6 +80,26 @@ def detectObjectsInImage(parking_spaces, image):
         print("Space Occupied " + str(j) + ": ", space_occupied)
         j = j + 1
         
+def torchObjectDetection(parking_spaces, image):
+    model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
+    device = 'cpu'
+    model.to(device)
+    frame = [image]
+    results = model(frame)
+    labels, cord = results.xyxyn[0][:, -1].numpy(), results.xyxyn[0][:, :-1].numpy()
+    classes = model.names
+    
+    n = len(labels)
+    x_shape, y_shape = image.shape[1], image.shape[0]
+    for i in range(n):
+        row = cord[i]
+        print(classes[int(labels[i])], row[4])
+        if row[4] >= 0.2:
+            x1, y1, x2, y2 = int(row[0]*x_shape), int(row[1]*y_shape), int(row[2]*x_shape), int(row[3]*y_shape)
+            bgr = (0, 255, 0)
+            cv2.rectangle(image, (x1, y1), (x2, y2), bgr, 2)
+            cv2.putText(image, classes[int(labels[i])], (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.9, bgr, 2)
+
 def highlightParkingSpaces(feed_name, pointMapHash):
     # Load the image
     image = cv2.imread(feed_name)
@@ -101,14 +118,16 @@ def highlightParkingSpaces(feed_name, pointMapHash):
     ### CREATING JSON FILES LOGIC
     
     #parking_spaces = [
-    #np.array([[30,32], [221,32], [221,121], [30,121]]), 
-    #np.array([[30,130], [223,130], [223,220], [30,220]])]
+    #np.array([[233,10],  [396,10],  [396,87],  [233,87]]), 
+    #np.array([[233,101], [396,101], [396,177], [233,177]]),]
     
     #createJSONParkingSpaceData(pointMapHash, parking_spaces)
     
     ### END CREATING JSON FILES LOGIC
     
-    detectObjectsInImage(parking_spaces, image)
+    mobileNetSSDObjectDetection(parking_spaces, image)
+    
+    torchObjectDetection(parking_spaces, image)
 
     #image = cv2.polylines(image, parking_spaces, True, (255, 0, 0), 2)
     
