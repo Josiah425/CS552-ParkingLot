@@ -6,15 +6,30 @@ import requests
 import json
 import sys
 import torch
+import boto3
 
 app = Flask(__name__)
 # CL argument 1
-app.config['arg1'] = sys.argv[1]
+app.config['path_to_image'] = sys.argv[1]
 # CL argument 2
-app.config['arg2'] = sys.argv[2]
+app.config['config_file_to_use'] = sys.argv[2]
 
 plt.rcParams["figure.figsize"] = [13.91, 9.51]
 plt.rcParams["figure.autolayout"] = True
+
+dynamodb = boto3.client(
+    'dynamodb',
+    aws_access_key_id='AKIA3DC6ILKDZPVKTXUK',
+    aws_secret_access_key='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',
+    region_name='us-east-1'
+)
+
+s3 = boto3.client(
+    's3',
+    aws_access_key_id='AKIA3DC6ILKDZPVKTXUK',
+    aws_secret_access_key='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',
+    region_name='us-east-1'
+)
 
 def loadJSONParkingSpaceData(pointMapHash):
     # Load the vertices from the JSON file
@@ -151,59 +166,35 @@ def torchObjectDetection(parking_spaces, image):
         parking_space_number = parking_space_number + 1
             
     return occupiedSpaces
-                
-def postJSONDataToRestful(occupiedSpaces):
-    # Define the URL of the RESTful endpoint
-    url = 'tbd'
-
-    # Convert the data to a JSON string
-    json_data = json.dumps(occupiedSpaces)
-
-    # Set the content type to JSON
-    headers = {'Content-Type': 'application/json'}
-
-    # Send the JSON data to the endpoint
-    response = requests.post(url, data=json_data, headers=headers)
-
-    # Print the response from the server
-    print(response.text)
-
-
-def highlightParkingSpaces(feed_name, pointMapHash):
-    # Load the image
-    image = cv2.imread(feed_name)
     
-    #plt.imshow(image)
-    #plt.xticks([]), plt.yticks([])  # to hide tick values on X and Y axis
-    #plt.show()
+def postDataToDynamoDB(occupiedSpaces, feed_name):
+    character = feed_name.split('ParkingLot')[1][0]
+    print(character)
     
+    '''
+    response = dynamodb.put_item(
+        TableName='ParkingLot',
+        Item={
+            'Lot': { 'S': character },
+            'occupied_spaces': { 'NS': occupiedSpaces },
+        }
+    )
+    '''
+
+def highlightParkingSpaces(feed_name, pointMapHash, image): 
     ### LOADING LOGIC
     
     # Load the vertices from the JSON file
     parking_spaces = loadJSONParkingSpaceData(pointMapHash)
-        
-    ### END OF LOADING LOGIC
-    
-    ### CREATING JSON FILES LOGIC
-    
-    #parking_spaces = [
-    #np.array([[233,10],  [396,10],  [396,87],  [233,87]]), 
-    #np.array([[233,101], [396,101], [396,177], [233,177]]),]
-    
-    #createJSONParkingSpaceData(pointMapHash, parking_spaces)
-    
-    ### END CREATING JSON FILES LOGIC
     
     #mobileNetSSDObjectDetection(parking_spaces, image)
     
+    # Use torch yolov5 to detect car objects in images
     occupiedSpaces = torchObjectDetection(parking_spaces, image)
     
-    print(occupiedSpaces)
-    
-    #postJSONDataToRestful(occupiedSpaces)
-
-    #image = cv2.polylines(image, parking_spaces, True, (255, 0, 0), 2)
-    
+    # Send the occupied space data detected by the pretrained neural network to dynamodb
+    postDataToDynamoDB(occupiedSpaces, feed_name)
+        
     # Display the result
     plt.imshow(image)
     plt.xticks([]), plt.yticks([])  # to hide tick values on X and Y axis
@@ -212,7 +203,18 @@ def highlightParkingSpaces(feed_name, pointMapHash):
 
 @app.route('/run', methods=['GET', 'POST'])
 def run():
-    highlightParkingSpaces(app.config['arg1'], app.config['arg2']);
+    response = s3.get_object(
+        Bucket='parking-lot-images-cs-final-project-552',
+        Key=app.config['path_to_image']
+    )
+
+    contents = response['Body'].read()
+    
+    # Create the image by converting the data from S3 into a format opencv understands
+    nparr = np.frombuffer(contents, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    
+    highlightParkingSpaces(app.config['path_to_image'], app.config['config_file_to_use'], img);
     return jsonify({'message': 'Success!'})
 
 if __name__ == '__main__':
