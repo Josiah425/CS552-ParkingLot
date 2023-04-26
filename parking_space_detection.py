@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,10 +9,6 @@ import torch
 import boto3
 
 app = Flask(__name__)
-# CL argument 1
-app.config['path_to_image'] = sys.argv[1]
-# CL argument 2
-app.config['config_file_to_use'] = sys.argv[2]
 
 plt.rcParams["figure.figsize"] = [13.91, 9.51]
 plt.rcParams["figure.autolayout"] = True
@@ -203,9 +199,17 @@ def highlightParkingSpaces(feed_name, pointMapHash, image):
 
 @app.route('/run', methods=['GET', 'POST'])
 def run():
+    # Example Url use to call the flask application
+    #    127.0.0.1:5000/run?path_to_image=ParkingLotA.jpg&config_number_to_use=1
+    #    127.0.0.1:5000/run?path_to_image=ParkingLotB.jpg&config_number_to_use=2
+    #    127.0.0.1:5000/run?path_to_image=ParkingLotC.jpg&config_number_to_use=3
+    # The path_to_image and config_number_to_use are used here to determine the arguments to the script
+    path_to_image = request.args.get('path_to_image')
+    config_number_to_use = request.args.get('config_number_to_use')
+
     response = s3.get_object(
         Bucket='parking-lot-images-cs-final-project-552',
-        Key=app.config['path_to_image']
+        Key=path_to_image
     )
 
     contents = response['Body'].read()
@@ -214,7 +218,7 @@ def run():
     nparr = np.frombuffer(contents, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     
-    highlightParkingSpaces(app.config['path_to_image'], app.config['config_file_to_use'], img);
+    highlightParkingSpaces(path_to_image, config_number_to_use, img);
     return jsonify({'message': 'Success!'})
 
 if __name__ == '__main__':
