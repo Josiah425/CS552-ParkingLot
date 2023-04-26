@@ -9,7 +9,6 @@ python 3.6
 If you don't see python 3.6 installed on your machine then
 * sudo apt-get install python3.6
 
-
 opencv 4.7.0
 * pip install opencv-python
 
@@ -18,6 +17,15 @@ matplotlib
 
 numpy
 * pip install numpy
+
+requests
+* pip install requests
+
+flask
+* pip install flask
+
+boto3
+* pip install boto3
 
 run code like so
 
