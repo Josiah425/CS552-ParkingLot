@@ -27,6 +27,9 @@ flask
 boto3
 * pip install boto3
 
+yolov5
+* pip install -qr https://raw.githubusercontent.com/ultralytics/yolov5/master/requirements.txt  # install dependencies
+
 run code like so
 
 `python3 parking_space_detection.py <PATH_TO_IMAGE> <CONFIGURATION_HASH_NUMBER>`
