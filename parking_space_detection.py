@@ -15,6 +15,7 @@ plt.rcParams["figure.figsize"] = [13.91, 9.51]
 plt.rcParams["figure.autolayout"] = True
 
 rekognition = boto3.client('rekognition')
+dynamodb = boto3.client('dynamodb')
 s3 = boto3.client('s3')
 
 def loadJSONParkingSpaceData(pointMapHash):
@@ -30,29 +31,37 @@ def loadJSONParkingSpaceData(pointMapHash):
         
     return parking_spaces
     
-def detectCarsWithAWSRekognition(feed_name):
+def detectCarsWithAWSRekognition(feed_name, parking_image):
     with open(feed_name, 'rb') as image:
         image_bytes = image.read()
 
+    # Identify objects that are 70% likely to be a car
     response = rekognition.detect_labels(Image={'Bytes': image_bytes}, MaxLabels=10, MinConfidence=70)
     
-    print(response)
-    
-    print('Labels detected:')
+    # Get a list of all instances, this will determine the number of cars identified and where they are
     instances = [];
     for label in response['Labels']:
-        print(f"{label['Name']} : {label['Confidence']}%")
         if label['Name'] == 'Car':
             instances = label['Instances']
-        
+    
+    # Filter by car label
     cars = [label for label in response['Labels'] if label['Name'] == 'Car']
-    
-    print(f"Number of cars detected: {len(instances)}")
-    
+        
+    # Draw rectangles around the cars in the image
+    for instance in instances:
+        bounding_box = instance['BoundingBox']
+        x = int(bounding_box['Left'] * parking_image.shape[1])
+        y = int(bounding_box['Top'] * parking_image.shape[0])
+        width = int(bounding_box['Width'] * parking_image.shape[1])
+        height = int(bounding_box['Height'] * parking_image.shape[0])
+        cv2.rectangle(parking_image, (x, y), (x + width, y + height), (255, 0, 0), 2)
+        
     return len(instances)
     
 def postDataToRestfulEndpoint(feed_name, total_parking_spaces, empty_parking_spaces):
     url = "https://d75i8bz9h1.execute-api.us-west-1.amazonaws.com/prod"
+    
+    # This lets me get the lot id assuming the images are named properly
     character = feed_name.split('ParkingLot')[1][0]
     
     # Jsonify the data in the format restful endpoint expects
@@ -80,7 +89,7 @@ def highlightParkingSpaces(feed_name, pointMapHash, image):
     parking_spaces = loadJSONParkingSpaceData(pointMapHash)
     
     # Call AWS Rekognition to detect cars in the image
-    cars_detected = detectCarsWithAWSRekognition(feed_name)
+    cars_detected = detectCarsWithAWSRekognition(feed_name, image)
     
     # Send data to a restful endpoint that describes the lot id, total spaces, and the number of empty spaces
     postDataToRestfulEndpoint(feed_name, len(parking_spaces), max(0, len(parking_spaces)-cars_detected))
